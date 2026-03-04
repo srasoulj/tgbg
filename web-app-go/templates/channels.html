@@ -1,0 +1,23 @@
+{{ define "channels_nav" -}}
+    {{ if .Channels }}
+        <ul>
+            {{ range .Channels }}
+                <li>
+                    <a href="/channels?id={{ .ID }}&page=1">
+                        <span>{{ .Title }}</span>
+                        {{ if .Username.Valid }}
+                            <span class="channel-username">@{{ .Username.String }}</span>
+                        {{ end }}
+                    </a>
+                </li>
+            {{ end }}
+        </ul>
+    {{ else }}
+        <p class="empty-state">No channels found.</p>
+    {{ end }}
+{{- end }}
+
+{{ define "content" -}}
+    <p class="empty-state">Select a channel on the left to view its messages.</p>
+{{- end }}
+

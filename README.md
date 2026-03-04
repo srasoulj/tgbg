@@ -234,7 +234,94 @@ Reload Nginx and you should be able to reach the app at `http://your-domain.exam
 
 ---
 
-## 6. Connecting the desktop app to a remote SQL server
+## 6. Deploying when the server cannot access GitHub
+
+Sometimes your Linux server cannot reach GitHub (firewall, no outbound internet, etc.). In that case you can still deploy from your **local laptop** over SSH in two ways.
+
+### 6.1. Option A – copy files with `scp` (simplest)
+
+1. **Prepare a directory on the server (once)**
+
+   SSH into the server as `root` (or another user) and create a deployment folder, for example:
+
+   ```bash
+   mkdir -p /var/www/tgbg
+   ```
+
+2. **From your laptop, upload the app code**
+
+   From the repo root on your laptop:
+
+   ```bash
+   # Copy only the relevant subfolders to the server
+   scp -r web-app-go desktop-sync root@api.amoozal.com:/var/www/tgbg
+   ```
+
+   - Adjust the destination path if you prefer a different folder.
+   - Do **not** upload `.venv`, `.env`, `sessions`, `__pycache__`, etc. – they should stay local and/or be recreated on the server.
+
+3. **Run the Go web app on the server**
+
+   ```bash
+   ssh root@api.amoozal.com
+   cd /var/www/tgbg/web-app-go
+   go run ./...
+   ```
+
+   Once this works, you can turn it into a systemd service as shown in section **5.3** so it runs in the background.
+
+### 6.2. Option B – use the server as a bare Git remote (no GitHub needed)
+
+This option gives you a nicer workflow: you `git push` from your laptop directly to the server, even if the server cannot reach GitHub.
+
+1. **Create a bare repo on the server (once)**
+
+   ```bash
+   ssh root@api.amoozal.com
+   mkdir -p /opt/git/tgbg.git
+   cd /opt/git/tgbg.git
+   git init --bare
+   ```
+
+2. **Add a `production` remote on your laptop**
+
+   From the repo root on your laptop:
+
+   ```bash
+   git remote add production root@api.amoozal.com:/opt/git/tgbg.git
+   git push production main   # or your current branch
+   ```
+
+3. **Check out a working copy on the server**
+
+   ```bash
+   ssh root@api.amoozal.com
+   mkdir -p /var/www/tgbg
+   cd /var/www/tgbg
+   git clone /opt/git/tgbg.git .
+   ```
+
+4. **Deploy updates**
+
+   - On your laptop, commit your changes and run:
+
+   ```bash
+   git push production main
+   ```
+
+   - On the server:
+
+   ```bash
+   cd /var/www/tgbg
+   git pull
+   sudo systemctl restart tgbg-web   # if you use the systemd service from section 5.3
+   ```
+
+This way the **source of truth** is still your local git repo (and optionally GitHub), but the server gets updates by pulling from the bare repo that lives on the same machine.
+
+---
+
+## 7. Connecting the desktop app to a remote SQL server
 
 The desktop app talks to MySQL using the values from `desktop-sync/.env`.
 
@@ -272,7 +359,7 @@ The sync UI will now read and write data against the **remote** MySQL instance, 
 
 ---
 
-## 7. Notes
+## 8. Notes
 
 - The Telegram login uses a local session file, so you only need to enter the code/2FA password on first run or when the session expires.
 - The sync algorithm is described in more detail in `desktop-sync/sync-algorithm.md`.

@@ -1,0 +1,69 @@
+{{ define "channels_nav" -}}
+    {{ if .Channels }}
+        <ul>
+            {{ range .Channels }}
+                {{ $active := eq .ID $.CurrentChannel.ID }}
+                <li>
+                    <a href="/channels?id={{ .ID }}&page=1"{{ if $active }} class="active"{{ end }}>
+                        <span>{{ .Title }}</span>
+                        {{ if .Username.Valid }}
+                            <span class="channel-username">@{{ .Username.String }}</span>
+                        {{ end }}
+                    </a>
+                </li>
+            {{ end }}
+        </ul>
+    {{ else }}
+        <p class="empty-state">No channels found.</p>
+    {{ end }}
+{{- end }}
+
+{{ define "content" -}}
+    <div class="channel-header">
+        <div class="channel-title">
+            <span>{{ .CurrentChannel.Title }}</span>
+            <span class="channel-pill">Channel</span>
+        </div>
+        {{ if .CurrentChannel.Username.Valid }}
+            <div class="channel-username">@{{ .CurrentChannel.Username.String }}</div>
+        {{ end }}
+    </div>
+
+    {{ if .Messages }}
+        {{ range .Messages }}
+            <article class="message">
+                <div class="message-inner">
+                    <div class="message-meta">
+                        <time>{{ .PublishedAt }}</time>
+                        <span class="message-id">#{{ .MessageID }}</span>
+                    </div>
+                    <div class="message-text">
+                        {{ if .Text.Valid }}{{ .Text.String }}{{ end }}
+                    </div>
+                    {{ if .MediaURL.Valid }}
+                        <div style="margin-top: 0.35rem;">
+                            <a href="{{ .MediaURL.String }}" target="_blank" rel="noopener noreferrer">
+                                View media
+                            </a>
+                        </div>
+                    {{ end }}
+                </div>
+            </article>
+        {{ end }}
+    {{ else }}
+        <p class="empty-state">No messages found (or none in the recent history synced).</p>
+    {{ end }}
+
+    <div class="pagination">
+        <div class="pagination-links">
+            {{ if .HasPrev }}
+                <a href="/channels?id={{ .CurrentChannel.ID }}&page={{ .PrevPage }}">&laquo; Prev</a>
+            {{ end }}
+            {{ if .HasNext }}
+                <a href="/channels?id={{ .CurrentChannel.ID }}&page={{ .NextPage }}">Next &raquo;</a>
+            {{ end }}
+        </div>
+        <span>Page {{ .Page }} of {{ .TotalPages }}</span>
+    </div>
+{{- end }}
+
