@@ -4,7 +4,8 @@ import traceback
 from datetime import datetime, timezone
 from typing import Optional
 
-from telethon.errors import RPCError
+from telethon import events
+from telethon.errors import RPCError, SessionPasswordNeededError
 
 from .config import AppConfig, ChannelConfig, load_config
 from .db import create_sync_log, get_connection, upsert_channel, upsert_message, update_sync_log
@@ -12,7 +13,11 @@ from .fetch_service import fetch_recent_messages_for_channel
 from .telegram_client import get_telegram_client
 
 
-async def run_full_sync(app_config: Optional[AppConfig] = None) -> None:
+async def run_full_sync(
+    app_config: Optional[AppConfig] = None,
+    get_code_callback=None,
+    get_password_callback=None,
+) -> dict:
     """
     Orchestrate a full sync run:
 
@@ -30,7 +35,7 @@ async def run_full_sync(app_config: Optional[AppConfig] = None) -> None:
 
     channels = [c for c in (app_config.channels or []) if c.enabled]
     if not channels:
-        return
+        return {"channels_processed": 0, "messages_inserted": 0, "messages_skipped": 0}
 
     conn = get_connection(
         host=app_config.db_host,
@@ -52,6 +57,25 @@ async def run_full_sync(app_config: Optional[AppConfig] = None) -> None:
 
     try:
         async with client:
+            # Ensure we are authorized; if not, perform interactive sign-in.
+            if not await client.is_user_authorized():
+                if get_code_callback is None:
+                    raise RuntimeError("Telegram login required but no code callback provided.")
+
+                phone = input("Enter your phone number for Telegram (with country code): ")
+                await client.send_code_request(phone)
+                code_future = get_code_callback()
+                code = await code_future
+
+                try:
+                    await client.sign_in(phone=phone, code=code)
+                except SessionPasswordNeededError:
+                    if get_password_callback is None:
+                        raise RuntimeError("Telegram 2FA password required but no password callback provided.")
+                    password_future = get_password_callback()
+                    password = await password_future
+                    await client.sign_in(phone=phone, password=password)
+
             for channel_cfg in channels:
                 try:
                     tg_channel, messages_iter = await fetch_recent_messages_for_channel(
@@ -120,4 +144,9 @@ async def run_full_sync(app_config: Optional[AppConfig] = None) -> None:
         )
         conn.close()
 
+    return {
+        "channels_processed": channels_processed,
+        "messages_inserted": messages_inserted,
+        "messages_skipped": messages_skipped,
+    }
 
