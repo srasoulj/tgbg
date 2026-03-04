@@ -157,7 +157,122 @@ Open that URL in a browser to:
 
 ---
 
-## 5. Notes
+## 5. Deploying the Go web app to a server
+
+This is a minimal example of running the Go app on a Linux server (e.g. Ubuntu) behind a reverse proxy.
+
+### 5.1. Prepare the server
+
+- Install **Go** and **MySQL client libraries** (or ensure network access to your DB).
+- Clone the repo onto the server, for example into `/opt/tgbg`.
+- Ensure the server can reach your MySQL instance (same network / security group / firewall rules).
+
+### 5.2. Configure environment on the server
+
+On the server, set the same DB env vars used locally, but pointing to your production DB:
+
+```bash
+export DB_HOST=your-db-hostname-or-ip
+export DB_PORT=3306
+export DB_NAME=telegram_reader
+export DB_USER=tgbg
+export DB_PASSWORD=your_strong_prod_password
+```
+
+You can keep these in a file like `/etc/tgbg.env` and load them from your service manager (systemd, docker, etc.).
+
+### 5.3. Run as a systemd service (example)
+
+Create a unit file `/etc/systemd/system/tgbg-web.service`:
+
+```ini
+[Unit]
+Description=tgbg Go web app
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/tgbg.env
+WorkingDirectory=/opt/tgbg/web-app-go
+ExecStart=/usr/local/bin/go run ./...
+Restart=on-failure
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable tgbg-web
+sudo systemctl start tgbg-web
+```
+
+By default the app listens on `:8080`. You can:
+- Expose port `8080` directly, or
+- Put Nginx/Apache/another reverse proxy in front and proxy requests to `http://127.0.0.1:8080`.
+
+### 5.4. Reverse proxy with Nginx (very short example)
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+Reload Nginx and you should be able to reach the app at `http://your-domain.example.com/`.
+
+---
+
+## 6. Connecting the desktop app to a remote SQL server
+
+The desktop app talks to MySQL using the values from `desktop-sync/.env`.
+
+To point it at a remote MySQL server instead of localhost:
+
+1. **On the MySQL server**
+   - Ensure MySQL is listening on a network interface accessible from your desktop (for example `0.0.0.0:3306` or a private IP).
+   - Open the firewall / security group for TCP **port 3306** from your desktop’s IP or VPN network.
+   - Create a user that can connect from your desktop’s IP or `%`:
+
+```sql
+CREATE USER 'tgbg'@'%' IDENTIFIED BY 'your_db_password_here';
+GRANT ALL PRIVILEGES ON telegram_reader.* TO 'tgbg'@'%';
+FLUSH PRIVILEGES;
+```
+
+2. **In `desktop-sync/.env` on your machine**
+   - Set:
+
+```env
+DB_HOST=your-remote-db-hostname-or-ip
+DB_PORT=3306
+DB_NAME=telegram_reader
+DB_USER=tgbg
+DB_PASSWORD=your_db_password_here
+```
+
+   - If you require TLS, also configure `DB_SSL_CA` to point to the CA file provided by your hosting/cloud provider.
+
+3. **Run the desktop app as usual**
+   - Activate the virtualenv in `desktop-sync`.
+   - Start the app with `python -m telegram_sync.ui.app`.
+
+The sync UI will now read and write data against the **remote** MySQL instance, and your deployed Go web app can read from the same database.
+
+---
+
+## 7. Notes
 
 - The Telegram login uses a local session file, so you only need to enter the code/2FA password on first run or when the session expires.
 - The sync algorithm is described in more detail in `desktop-sync/sync-algorithm.md`.
