@@ -57,6 +57,9 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// Local static assets (fonts, CSS) — no external requests on load
+	mux.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir("static"))))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		channels, err := loadChannels(db)
 		if err != nil {

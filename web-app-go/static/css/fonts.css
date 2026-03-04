@@ -1,0 +1,8 @@
+/* IRANYekanX Light - local, no external requests */
+@font-face {
+  font-family: "IRANYekanX";
+  src: url("../fonts/IRANYekanX-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
