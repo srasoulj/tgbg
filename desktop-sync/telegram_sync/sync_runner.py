@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from telethon import events
 from telethon.errors import RPCError, SessionPasswordNeededError
 
 from .config import AppConfig, ChannelConfig, load_config
-from .db import create_sync_log, get_connection, upsert_channel, upsert_message, update_sync_log
-from .fetch_service import fetch_recent_messages_for_channel
+from .db import (
+    create_sync_log,
+    get_connection,
+    get_last_message_published_for_telegram,
+    upsert_channel,
+    upsert_message,
+    update_sync_log,
+)
 from .telegram_client import get_telegram_client
 
 
@@ -78,14 +84,45 @@ async def run_full_sync(
 
             for channel_cfg in channels:
                 try:
-                    tg_channel, messages_iter = await fetch_recent_messages_for_channel(
-                        client, channel_cfg, hours=48
-                    )
+                    # Resolve channel entity; support either username or numeric ID
+                    target: object = channel_cfg.username_or_id
+                    if isinstance(target, str):
+                        trimmed = target.strip()
+                        if trimmed and trimmed.lstrip("-").isdigit():
+                            try:
+                                target = int(trimmed)
+                            except ValueError:
+                                target = trimmed
+
+                    tg_channel = await client.get_entity(target)
+
                     channel_id = upsert_channel(
                         conn,
                         telegram_id=int(tg_channel.id),
                         username=getattr(tg_channel, "username", None),
                         title=getattr(tg_channel, "title", str(channel_cfg.username_or_id)),
+                    )
+
+                    # Decide where to start fetching from:
+                    # - If we have previous messages, start from their latest published_at.
+                    # - But never fetch earlier than 48h ago, so we respect the time window.
+                    now_utc = datetime.now(timezone.utc)
+                    threshold = now_utc - timedelta(hours=48)
+
+                    last_published = get_last_message_published_for_telegram(
+                        conn, int(tg_channel.id)
+                    )
+                    if last_published is not None:
+                        if last_published.tzinfo is None:
+                            last_published = last_published.replace(tzinfo=timezone.utc)
+                        from_datetime = max(last_published, threshold)
+                    else:
+                        from_datetime = threshold
+
+                    messages_iter = client.iter_messages(
+                        tg_channel,
+                        offset_date=from_datetime,
+                        reverse=True,
                     )
 
                     async for msg in messages_iter:
@@ -120,13 +157,17 @@ async def run_full_sync(
                     channels_processed += 1
                 except RPCError as e:
                     status = "partial"
+                    msg = f"Error syncing channel {channel_cfg.username_or_id}: {e}"
+                    print(msg)
                     if error_message is None:
-                        error_message = f"Error syncing channel {channel_cfg.username_or_id}: {e}"
+                        error_message = msg
                 except Exception as e:  # noqa: BLE001
                     status = "partial"
                     tb = traceback.format_exc()
+                    msg = f"Unexpected error for channel {channel_cfg.username_or_id}: {e}\n{tb}"
+                    print(msg)
                     if error_message is None:
-                        error_message = f"Unexpected error for channel {channel_cfg.username_or_id}: {e}\n{tb}"
+                        error_message = msg
 
     except Exception as e:  # noqa: BLE001
         status = "error"

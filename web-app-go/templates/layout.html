@@ -3,6 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Telegram in Background</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -358,6 +359,43 @@
             transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
         }
 
+        .mobile-channel-selector {
+            display: none;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            padding: 0.4rem 0.65rem 0.6rem 0.65rem;
+            margin: -0.6rem -0.75rem 0.75rem -0.75rem;
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92));
+            border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+            backdrop-filter: blur(18px);
+        }
+
+        .mobile-channel-selector-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--text-muted);
+            margin-bottom: 0.35rem;
+            display: block;
+        }
+
+        .mobile-channel-select {
+            width: 100%;
+            padding: 0.45rem 0.7rem;
+            border-radius: var(--radius-pill);
+            border: 1px solid rgba(148, 163, 184, 0.7);
+            background: rgba(15, 23, 42, 0.95);
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        .mobile-channel-select:focus {
+            border-color: var(--accent-strong);
+            box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.5);
+        }
+
         .pagination a:hover {
             background: var(--accent-soft);
             border-color: var(--accent-strong);
@@ -365,8 +403,16 @@
         }
 
         @media (max-width: 900px) {
+            body {
+                background-attachment: scroll;
+            }
+            .app-shell {
+                padding: 0.75rem;
+                align-items: stretch;
+            }
             .app-frame {
                 height: auto;
+                border-radius: 18px;
             }
             main {
                 grid-template-columns: minmax(0, 1fr);
@@ -374,6 +420,57 @@
             nav {
                 border-right: none;
                 border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+            }
+            .mobile-channel-selector {
+                display: block;
+            }
+        }
+
+        @media (max-width: 640px) {
+            nav {
+                display: none;
+            }
+            header {
+                padding: 0.7rem 1rem;
+            }
+            .header-subtitle {
+                display: none;
+            }
+            .header-title {
+                font-size: 0.95rem;
+            }
+            .header-badge {
+                padding: 0.25rem 0.6rem;
+                font-size: 0.7rem;
+            }
+            .app-frame {
+                border-radius: 0;
+                border: none;
+                box-shadow: none;
+            }
+            .content-inner {
+                padding-bottom: 0.5rem;
+            }
+            .message {
+                padding: 0.8rem 0.85rem;
+                margin-bottom: 0.7rem;
+            }
+            .message-text {
+                font-size: 0.88rem;
+            }
+            .pagination {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        .pagination--mobile-hidden {
+            display: flex;
+        }
+
+        @media (max-width: 640px) {
+            .pagination--mobile-hidden {
+                display: none;
             }
         }
     </style>
@@ -403,12 +500,85 @@
             </nav>
             <section class="content">
                 <div class="content-inner">
+                    {{ template "mobile_channel_selector" . }}
                     {{ template "content" . }}
                 </div>
             </section>
         </main>
     </div>
 </div>
+<script>
+    (function () {
+        // Mobile channel dropdown
+        var channelSelect = document.getElementById("mobile-channel-select");
+        if (channelSelect) {
+            channelSelect.addEventListener("change", function (e) {
+                var value = e.target.value;
+                if (value) {
+                    window.location.href = value;
+                }
+            });
+        }
+
+        // Infinite scroll for messages
+        var messagesContainer = document.getElementById("messages-container");
+        var paginationMeta = document.getElementById("pagination-meta");
+        if (!messagesContainer || !paginationMeta) {
+            return;
+        }
+
+        var loading = false;
+
+        function getNextUrl() {
+            return paginationMeta.dataset.nextUrl || "";
+        }
+
+        function onScroll() {
+            if (loading) return;
+            var nextUrl = getNextUrl();
+            if (!nextUrl) return;
+
+            var scrollPosition = window.innerHeight + window.scrollY;
+            var threshold = document.body.offsetHeight - 200;
+            if (scrollPosition < threshold) return;
+
+            loading = true;
+
+            fetch(nextUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+                .then(function (response) { return response.text(); })
+                .then(function (html) {
+                    var temp = document.createElement("div");
+                    temp.innerHTML = html;
+
+                    var newMessagesRoot = temp.querySelector("#messages-container");
+                    var newMeta = temp.querySelector("#pagination-meta");
+
+                    if (newMessagesRoot) {
+                        var newMessages = newMessagesRoot.querySelectorAll(".message");
+                        newMessages.forEach(function (msg) {
+                            messagesContainer.appendChild(msg);
+                        });
+                    }
+
+                    if (newMeta) {
+                        paginationMeta.dataset.nextUrl = newMeta.dataset.nextUrl || "";
+                        paginationMeta.querySelector("span").textContent = newMeta.querySelector("span").textContent;
+                    } else {
+                        paginationMeta.dataset.nextUrl = "";
+                    }
+                })
+                .catch(function () {
+                    // Fail silently; user can still use manual pagination on desktop.
+                    paginationMeta.dataset.nextUrl = "";
+                })
+                .finally(function () {
+                    loading = false;
+                });
+        }
+
+        window.addEventListener("scroll", onScroll, { passive: true });
+    })();
+</script>
 </body>
 </html>
 {{- end }}

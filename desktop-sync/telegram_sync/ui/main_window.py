@@ -6,9 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QInputDialog,
     QHBoxLayout,
     QLabel,
@@ -73,14 +74,21 @@ class MainWindow(QWidget):
 
         # UI elements
         self.channel_list = QListWidget()
+        self.channel_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self.sync_button = QPushButton("Sync now")
         self.add_channel_button = QPushButton("Add channel")
         self.status_label = JLabel = QLabel("Last sync: never")
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
 
+        # Path to channels.json used by config loader
+        self._channels_path = Path(__file__).resolve().parents[2] / "channels.json"
+        # Path to store last sync metadata
+        self._last_sync_path = Path(__file__).resolve().parents[2] / "last_sync.json"
+
         self._build_layout()
         self._populate_channels()
+        self._load_last_sync()
 
         self.sync_button.clicked.connect(self._on_sync_clicked)
         self.add_channel_button.clicked.connect(self._on_add_channel_clicked)
@@ -151,19 +159,69 @@ class MainWindow(QWidget):
         self.setLayout(root_layout)
 
     def _populate_channels(self) -> None:
+        self.channel_list.clear()
         for ch in self._config.channels or []:
-            item = QListWidgetItem(ch.username_or_id)
-            item.setCheckState(Qt.CheckState.Checked if ch.enabled else Qt.CheckState.Unchecked)
-            self.channel_list.addItem(item)
+            self._add_channel_row(ch)
+
+    def _add_channel_row(self, ch: ChannelConfig) -> None:
+        item = QListWidgetItem()
+        item.setSizeHint(QSize(0, 32))
+
+        checkbox = QCheckBox(ch.username_or_id)
+        checkbox.setChecked(ch.enabled)
+
+        remove_btn = QPushButton("🗑")
+        remove_btn.setFixedSize(24, 24)
+        remove_btn.setFlat(True)
+        remove_btn.setStyleSheet(
+            "QPushButton { border: none; color: #f97373; font-size: 14px; }"
+            "QPushButton:hover { color: #ef4444; }"
+        )
+
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+        row_layout.addWidget(checkbox)
+        row_layout.addStretch(1)
+        row_layout.addWidget(remove_btn)
+
+        self.channel_list.addItem(item)
+        self.channel_list.setItemWidget(item, row_widget)
+
+        def _on_remove_clicked() -> None:
+            row = self.channel_list.row(item)
+            if row >= 0:
+                self.channel_list.takeItem(row)
+
+            self._config.channels = [
+                cfg for cfg in (self._config.channels or [])
+                if cfg.username_or_id != ch.username_or_id
+            ]
+            self._save_channels_to_file()
+            self._append_log(f"Removed channel '{ch.username_or_id}'.")
+
+        remove_btn.clicked.connect(_on_remove_clicked)
 
     def _on_sync_clicked(self) -> None:
-        # Update enabled flags from UI
+        # Update enabled flags from UI (checkboxes in each row)
         updated_channels: list[ChannelConfig] = []
         for idx in range(self.channel_list.count()):
             item = self.channel_list.item(idx)
-            enabled = item.checkState() == Qt.CheckState.Checked
-            updated_channels.append(ChannelConfig(username_or_id=item.text(), enabled=enabled))
+            widget = self.channel_list.itemWidget(item)
+            if widget is None:
+                continue
+            checkbox = widget.findChild(QCheckBox)
+            if checkbox is None:
+                continue
+            updated_channels.append(
+                ChannelConfig(
+                    username_or_id=checkbox.text(),
+                    enabled=checkbox.isChecked(),
+                )
+            )
         self._config.channels = updated_channels
+        self._save_channels_to_file()
 
         self.sync_button.setEnabled(False)
         self._append_log("Triggering sync...")
@@ -181,7 +239,14 @@ class MainWindow(QWidget):
 
     def _on_sync_finished(self, status: str) -> None:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.status_label.setText(f"Last sync: {timestamp} ({status})")
+        label = f"Last sync: {timestamp} ({status})"
+        self.status_label.setText(label)
+        # Persist last sync status so it survives app restarts
+        payload = {"last_sync_label": label, "timestamp": timestamp, "status": status}
+        try:
+            self._last_sync_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            self._append_log(f"Failed to persist last sync status: {exc}")
         self.sync_button.setEnabled(True)
 
     def _on_add_channel_clicked(self) -> None:
@@ -205,12 +270,22 @@ class MainWindow(QWidget):
         new_ch = ChannelConfig(username_or_id=username_or_id, enabled=True)
         self._config.channels.append(new_ch)
 
-        item = QListWidgetItem(username_or_id)
-        item.setCheckState(Qt.CheckState.Checked)
-        self.channel_list.addItem(item)
+        self._add_channel_row(new_ch)
 
         self._save_channels_to_file()
         self._append_log(f"Added channel '{username_or_id}'.")
+
+    def _load_last_sync(self) -> None:
+        if not self._last_sync_path.exists():
+            return
+        try:
+            data = json.loads(self._last_sync_path.read_text(encoding="utf-8"))
+            label = data.get("last_sync_label")
+            if label:
+                self.status_label.setText(label)
+        except Exception:  # noqa: BLE001
+            # Ignore errors and keep default label
+            return
 
     def _save_channels_to_file(self) -> None:
         data = [

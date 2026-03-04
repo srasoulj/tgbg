@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/joho/godotenv"
 )
 
 type Channel struct {
@@ -22,7 +24,7 @@ type Message struct {
 	MessageID   int64
 	Text        sql.NullString
 	MediaURL    sql.NullString
-	PublishedAt string
+	PublishedAt time.Time
 }
 
 type ChannelsPageData struct {
@@ -42,23 +44,16 @@ type MessagesPageData struct {
 }
 
 func main() {
+	// Load .env from current directory if present, overriding existing env vars.
+	_ = godotenv.Overload(".env")
+
 	db, err := openDBFromEnv()
 	if err != nil {
 		log.Fatalf("open DB: %v", err)
 	}
 	defer db.Close()
 
-	tmplLayout := template.Must(template.ParseFiles(
-		"templates/layout.html",
-	))
-	tmplChannels := template.Must(template.Must(tmplLayout.Clone()).ParseFiles(
-		"templates/layout.html",
-		"templates/channels.html",
-	))
-	tmplMessages := template.Must(template.Must(tmplLayout.Clone()).ParseFiles(
-		"templates/layout.html",
-		"templates/messages.html",
-	))
+	_, tmplChannels, tmplMessages := buildTemplates()
 
 	mux := http.NewServeMux()
 
@@ -67,6 +62,14 @@ func main() {
 		if err != nil {
 			http.Error(w, "failed to load channels", http.StatusInternalServerError)
 			log.Printf("loadChannels: %v", err)
+			return
+		}
+
+		// On first load, if there is at least one channel, redirect to its messages
+		// so both desktop and mobile immediately see content instead of an empty state.
+		if len(channels) > 0 {
+			first := channels[0]
+			http.Redirect(w, r, fmt.Sprintf("/channels?id=%d&page=1", first.ID), http.StatusFound)
 			return
 		}
 
@@ -173,6 +176,41 @@ func getenvDefault(key, def string) string {
 		return v
 	}
 	return def
+}
+
+var tehranLoc = mustLoadTehranLocation()
+
+func mustLoadTehranLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Tehran")
+	if err != nil {
+		// Fallback to local time if the timezone cannot be loaded.
+		return time.Local
+	}
+	return loc
+}
+
+func formatIRTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.In(tehranLoc).Format("2006-01-02 15:04")
+}
+
+func buildTemplates() (*template.Template, *template.Template, *template.Template) {
+	funcMap := template.FuncMap{
+		"formatIRTime": formatIRTime,
+	}
+
+	layout := template.Must(template.New("layout").Funcs(funcMap).ParseFiles(
+		"templates/layout.html",
+	))
+	channels := template.Must(template.Must(layout.Clone()).ParseFiles(
+		"templates/channels.html",
+	))
+	messages := template.Must(template.Must(layout.Clone()).ParseFiles(
+		"templates/messages.html",
+	))
+	return layout, channels, messages
 }
 
 func loadChannels(db *sql.DB) ([]Channel, error) {

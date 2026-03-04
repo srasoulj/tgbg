@@ -58,7 +58,9 @@ def load_config(base_dir: Path | None = None) -> AppConfig:
     project_root = base_dir.parent
     env_path = project_root / ".env"
     if env_path.exists():
-        load_dotenv(env_path)
+        # Ensure values from .env override any existing environment variables,
+        # so changing DB_HOST/DB_* here always takes effect.
+        load_dotenv(env_path, override=True)
 
     api_id = int(os.environ["TELEGRAM_API_ID"])
     api_hash = os.environ["TELEGRAM_API_HASH"]

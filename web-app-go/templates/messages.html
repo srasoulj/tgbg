@@ -18,6 +18,21 @@
     {{ end }}
 {{- end }}
 
+{{ define "mobile_channel_selector" -}}
+    {{ if .Channels }}
+        <div class="mobile-channel-selector">
+            <label for="mobile-channel-select" class="mobile-channel-selector-label">Channel</label>
+            <select id="mobile-channel-select" class="mobile-channel-select">
+                {{ range .Channels }}
+                    <option value="/channels?id={{ .ID }}&page=1"{{ if eq .ID $.CurrentChannel.ID }} selected{{ end }}>
+                        {{ .Title }}
+                    </option>
+                {{ end }}
+            </select>
+        </div>
+    {{ end }}
+{{- end }}
+
 {{ define "content" -}}
     <div class="channel-header">
         <div class="channel-title">
@@ -29,40 +44,34 @@
         {{ end }}
     </div>
 
-    {{ if .Messages }}
-        {{ range .Messages }}
-            <article class="message">
-                <div class="message-inner">
-                    <div class="message-meta">
-                        <time>{{ .PublishedAt }}</time>
-                        <span class="message-id">#{{ .MessageID }}</span>
-                    </div>
-                    <div class="message-text">
-                        {{ if .Text.Valid }}{{ .Text.String }}{{ end }}
-                    </div>
-                    {{ if .MediaURL.Valid }}
-                        <div style="margin-top: 0.35rem;">
-                            <a href="{{ .MediaURL.String }}" target="_blank" rel="noopener noreferrer">
-                                View media
-                            </a>
+    <div id="messages-container">
+        {{ if .Messages }}
+            {{ range .Messages }}
+                <article class="message">
+                    <div class="message-inner">
+                        <div class="message-meta">
+                            <time>{{ formatIRTime .PublishedAt }}</time>
+                            <span class="message-id">#{{ .MessageID }}</span>
                         </div>
-                    {{ end }}
-                </div>
-            </article>
+                        <div class="message-text">
+                            {{ if .Text.Valid }}{{ .Text.String }}{{ end }}
+                        </div>
+                        {{ if .MediaURL.Valid }}
+                            <div style="margin-top: 0.35rem;">
+                                <a href="{{ .MediaURL.String }}" target="_blank" rel="noopener noreferrer">
+                                    View media
+                                </a>
+                            </div>
+                        {{ end }}
+                    </div>
+                </article>
+            {{ end }}
+        {{ else }}
+            <p class="empty-state">No messages found (or none in the recent history synced).</p>
         {{ end }}
-    {{ else }}
-        <p class="empty-state">No messages found (or none in the recent history synced).</p>
-    {{ end }}
+    </div>
 
-    <div class="pagination">
-        <div class="pagination-links">
-            {{ if .HasPrev }}
-                <a href="/channels?id={{ .CurrentChannel.ID }}&page={{ .PrevPage }}">&laquo; Prev</a>
-            {{ end }}
-            {{ if .HasNext }}
-                <a href="/channels?id={{ .CurrentChannel.ID }}&page={{ .NextPage }}">Next &raquo;</a>
-            {{ end }}
-        </div>
+    <div class="pagination" id="pagination-meta" data-next-url="{{ if .HasNext }}/channels?id={{ .CurrentChannel.ID }}&page={{ .NextPage }}{{ end }}">
         <span>Page {{ .Page }} of {{ .TotalPages }}</span>
     </div>
 {{- end }}

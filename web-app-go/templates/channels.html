@@ -17,7 +17,22 @@
     {{ end }}
 {{- end }}
 
+{{ define "mobile_channel_selector" -}}
+    {{ if .Channels }}
+        <div class="mobile-channel-selector">
+            <label for="mobile-channel-select" class="mobile-channel-selector-label">Channel</label>
+            <select id="mobile-channel-select" class="mobile-channel-select">
+                {{ range .Channels }}
+                    <option value="/channels?id={{ .ID }}&page=1">
+                        {{ .Title }}
+                    </option>
+                {{ end }}
+            </select>
+        </div>
+    {{ end }}
+{{- end }}
+
 {{ define "content" -}}
-    <p class="empty-state">Select a channel on the left to view its messages.</p>
+    <p class="empty-state">Select a channel to see its messages.</p>
 {{- end }}
 

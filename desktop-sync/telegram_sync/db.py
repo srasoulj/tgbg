@@ -120,3 +120,27 @@ def update_sync_log(
         )
     conn.commit()
 
+
+def get_last_message_published_for_telegram(
+    conn: MySQLConnection,
+    telegram_id: int,
+) -> Optional[datetime]:
+    """
+    Return the most recent published_at for messages in a channel
+    identified by its Telegram ID, or None if no messages exist yet.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT MAX(m.published_at)
+            FROM messages m
+            JOIN channels c ON m.channel_id = c.id
+            WHERE c.telegram_id = %s
+            """,
+            (telegram_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return row[0]
+

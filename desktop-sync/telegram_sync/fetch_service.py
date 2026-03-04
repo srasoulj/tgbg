@@ -25,7 +25,18 @@ async def fetch_recent_messages_for_channel(
     """
     from_datetime = _now_utc() - timedelta(hours=hours)
 
-    entity = await client.get_entity(channel_cfg.username_or_id)
+    # Allow either a username or a numeric channel ID (e.g. -1001234567890).
+    target = channel_cfg.username_or_id
+    if isinstance(target, str):
+        trimmed = target.strip()
+        if trimmed and trimmed.lstrip("-").isdigit():
+            try:
+                target = int(trimmed)
+            except ValueError:
+                # Fall back to the raw string if int conversion fails
+                target = trimmed
+
+    entity = await client.get_entity(target)
 
     messages_iter = client.iter_messages(
         entity,
