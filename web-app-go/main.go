@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
+	ptime "github.com/yaa110/go-persian-calendar"
 )
 
 type Channel struct {
@@ -196,7 +197,10 @@ func formatIRTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.In(tehranLoc).Format("2006-01-02 15:04")
+	// Convert to Tehran time, then to Persian (Hijri Shamsi) calendar.
+	pt := ptime.New(t.In(tehranLoc))
+	// Example output: 1403-01-15 13:45 (Shamsi date, 24h time)
+	return pt.Format("yyyy-MM-dd HH:mm")
 }
 
 func buildTemplates() (*template.Template, *template.Template, *template.Template) {
