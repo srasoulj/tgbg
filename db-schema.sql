@@ -24,6 +24,20 @@ CREATE TABLE IF NOT EXISTS messages (
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Attachments: .npvt files linked to messages (channel_id + message_id = same as messages table)
+CREATE TABLE IF NOT EXISTS message_files (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  channel_id BIGINT UNSIGNED NOT NULL,
+  message_id BIGINT NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  content LONGBLOB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_channel_message_file (channel_id, message_id),
+  CONSTRAINT fk_message_files_message
+    FOREIGN KEY (channel_id, message_id) REFERENCES messages(channel_id, message_id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS sync_logs (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   started_at DATETIME NOT NULL,

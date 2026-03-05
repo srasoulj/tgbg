@@ -22,10 +22,11 @@ type Channel struct {
 }
 
 type Message struct {
-	MessageID   int64
-	Text        sql.NullString
-	MediaURL    sql.NullString
-	PublishedAt time.Time
+	MessageID         int64
+	Text              sql.NullString
+	MediaURL          sql.NullString
+	AttachmentFileName sql.NullString // original filename for .npvt download link
+	PublishedAt       time.Time
 }
 
 type ChannelsPageData struct {
@@ -60,6 +61,8 @@ func main() {
 
 	// Local static assets (fonts, CSS) — no external requests on load
 	mux.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir("static"))))
+
+	mux.HandleFunc("/files/npvt", func(w http.ResponseWriter, r *http.Request) { handleNPVTDownload(db, w, r) })
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		channels, err := loadChannels(db)
@@ -258,10 +261,11 @@ func countMessages(db *sql.DB, channelID int64) (int64, error) {
 
 func loadMessages(db *sql.DB, channelID int64, limit, offset int) ([]Message, error) {
 	rows, err := db.Query(
-		`SELECT message_id, text, media_url, published_at
-         FROM messages
-         WHERE channel_id = ?
-         ORDER BY published_at DESC
+		`SELECT m.message_id, m.text, m.media_url, mf.filename, m.published_at
+         FROM messages m
+         LEFT JOIN message_files mf ON m.channel_id = mf.channel_id AND m.message_id = mf.message_id
+         WHERE m.channel_id = ?
+         ORDER BY m.published_at DESC
          LIMIT ? OFFSET ?`,
 		channelID, limit, offset,
 	)
@@ -273,11 +277,60 @@ func loadMessages(db *sql.DB, channelID int64, limit, offset int) ([]Message, er
 	var result []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.MessageID, &m.Text, &m.MediaURL, &m.PublishedAt); err != nil {
+		var attachName sql.NullString
+		if err := rows.Scan(&m.MessageID, &m.Text, &m.MediaURL, &attachName, &m.PublishedAt); err != nil {
 			return nil, err
 		}
+		m.AttachmentFileName = attachName
 		result = append(result, m)
 	}
 	return result, rows.Err()
+}
+
+func handleNPVTDownload(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cStr := r.URL.Query().Get("c")
+	mStr := r.URL.Query().Get("m")
+	if cStr == "" || mStr == "" {
+		http.Error(w, "missing c or m", http.StatusBadRequest)
+		return
+	}
+	channelID, err := strconv.ParseInt(cStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid channel id", http.StatusBadRequest)
+		return
+	}
+	messageID, err := strconv.ParseInt(mStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid message id", http.StatusBadRequest)
+		return
+	}
+
+	var filename string
+	var content []byte
+	row := db.QueryRow(
+		`SELECT filename, content FROM message_files WHERE channel_id = ? AND message_id = ?`,
+		channelID, messageID,
+	)
+	if err := row.Scan(&filename, &content); err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("handleNPVTDownload: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodGet {
+		w.Write(content)
+	}
 }
 

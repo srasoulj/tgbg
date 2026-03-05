@@ -6,6 +6,7 @@ from typing import Optional
 
 from telethon import events
 from telethon.errors import RPCError, SessionPasswordNeededError
+from telethon.tl.types import DocumentAttributeFilename, MessageMediaDocument
 
 from .config import AppConfig, ChannelConfig, load_config
 from .db import (
@@ -14,9 +15,32 @@ from .db import (
     get_last_message_published_for_telegram,
     upsert_channel,
     upsert_message,
+    upsert_message_file,
     update_sync_log,
 )
 from .telegram_client import get_telegram_client
+
+
+def _get_document_filename(msg) -> Optional[str]:
+    """
+    Get the document filename from a message. Tries msg.file.name first, then
+    document attributes (DocumentAttributeFilename). Returns None if not a document
+    or no filename is present.
+    """
+    name = getattr(getattr(msg, "file", None), "name", None)
+    if name and (name or "").strip():
+        return (name or "").strip()
+    media = getattr(msg, "media", None)
+    if not isinstance(media, MessageMediaDocument) or not getattr(media, "document", None):
+        return None
+    doc = media.document
+    attrs = getattr(doc, "attributes", None) or []
+    for attr in attrs:
+        if isinstance(attr, DocumentAttributeFilename):
+            fn = getattr(attr, "file_name", None)
+            if fn and (fn or "").strip():
+                return (fn or "").strip()
+    return None
 
 
 async def run_full_sync(
@@ -125,6 +149,9 @@ async def run_full_sync(
                         reverse=True,
                     )
 
+                    # Max size for .npvt attachments (500 KB)
+                    NPVT_MAX_BYTES = 500 * 1024
+
                     async for msg in messages_iter:
                         if not msg:
                             continue
@@ -134,13 +161,12 @@ async def run_full_sync(
                         # Text: prefer message.text; for media, Telethon puts caption into .message
                         text = msg.message or ""
 
-                        # For now we do not download media; media_url can be extended later.
-                        media_url = None
-
                         published_at = msg.date
                         if published_at.tzinfo is None:
                             published_at = published_at.replace(tzinfo=timezone.utc)
 
+                        # Insert message first so message_files FK is satisfied
+                        media_url = None
                         inserted = upsert_message(
                             conn,
                             channel_id=channel_id,
@@ -149,6 +175,43 @@ async def run_full_sync(
                             media_url=media_url,
                             published_at=published_at,
                         )
+
+                        # Then download and store .npvt attachment if present (message row now exists)
+                        fname = _get_document_filename(msg)
+                        if fname and fname.lower().endswith(".npvt"):
+                            try:
+                                content_bytes = await client.download_media(msg, file=bytes)
+                                if content_bytes is None:
+                                    content_bytes = b""
+                                if len(content_bytes) <= NPVT_MAX_BYTES:
+                                    original_filename = fname or "attachment.npvt"
+                                    upsert_message_file(
+                                        conn,
+                                        channel_id=channel_id,
+                                        message_id=int(msg.id),
+                                        filename=original_filename,
+                                        content=content_bytes,
+                                    )
+                                    media_url = f"/files/npvt?c={channel_id}&m={msg.id}"
+                                    upsert_message(
+                                        conn,
+                                        channel_id=channel_id,
+                                        message_id=int(msg.id),
+                                        text=text,
+                                        media_url=media_url,
+                                        published_at=published_at,
+                                    )
+                                else:
+                                    print(
+                                        f"Skip .npvt file (>{NPVT_MAX_BYTES} bytes): "
+                                        f"channel_id={channel_id} message_id={msg.id} size={len(content_bytes)}"
+                                    )
+                            except Exception as e:  # noqa: BLE001
+                                print(
+                                    f"Failed to download .npvt: channel_id={channel_id} "
+                                    f"message_id={msg.id}: {e}"
+                                )
+
                         if inserted:
                             messages_inserted += 1
                         else:

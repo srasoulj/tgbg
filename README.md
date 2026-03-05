@@ -8,6 +8,125 @@ This document explains how to run both parts locally.
 
 ---
 
+## Quick start: local testing on macOS
+
+Follow these steps to install MySQL, create the database, and run both the sync app and web app on your Mac.
+
+### Step 1. Install MySQL
+
+Using Homebrew:
+
+```bash
+brew install mysql
+brew services start mysql
+```
+
+Optional: set a root password and secure the installation:
+
+```bash
+mysql_secure_installation
+```
+
+### Step 2. Create the database and apply the schema
+
+From a terminal, connect as root (or another admin user) and create the database and user:
+
+```bash
+mysql -u root -p
+```
+
+In the MySQL prompt, run (use a real password instead of `your_db_password_here`):
+
+```sql
+CREATE DATABASE telegram_reader CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'tgbg'@'localhost' IDENTIFIED BY 'your_db_password_here';
+GRANT ALL PRIVILEGES ON telegram_reader.* TO 'tgbg'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+Apply the schema (from the **repo root**):
+
+```bash
+mysql -u tgbg -p telegram_reader < db-schema.sql
+```
+
+When prompted, enter the password you set for `tgbg`. This creates the `channels`, `messages`, `message_files`, and `sync_logs` tables.
+
+### Step 3. Configure and run the desktop sync app
+
+1. **Environment and dependencies**
+
+```bash
+cd desktop-sync
+cp .env.example .env
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+2. **Edit `desktop-sync/.env`**
+
+- Set `TG_API_ID` and `TG_API_HASH` from [my.telegram.org](https://my.telegram.org).
+- Set `DB_PASSWORD` to the same password you used for the `tgbg` user.
+- Leave `DB_HOST=localhost`, `DB_PORT=3306`, `DB_NAME=telegram_reader`, `DB_USER=tgbg` unless you changed them.
+
+3. **Create `desktop-sync/channels.json`**
+
+Add at least one channel you can access (e.g. a channel you admin or a public channel):
+
+```json
+[
+  { "username_or_id": "your_channel_username", "enabled": true }
+]
+```
+
+4. **Run the sync app (GUI)**
+
+```bash
+python -m telegram_sync.ui.app
+```
+
+- On first run, enter your **phone number** (with country code) in the terminal when asked.
+- When Telegram sends a code, enter it in the GUI dialog.
+- If you use 2FA, enter your cloud password in the GUI.
+- In the app, click **Sync**. Messages from the last 48 hours for enabled channels will be synced into MySQL.
+
+Leave this running or close it; the web app reads from the same database.
+
+### Step 4. Configure and run the web app
+
+1. **Environment**
+
+From the repo root:
+
+```bash
+cd web-app-go
+cp .env.example .env
+```
+
+2. **Edit `web-app-go/.env`**
+
+Set the same DB credentials as in the sync app (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
+
+3. **Run the web app**
+
+```bash
+go run .
+```
+
+You should see: `Go web app listening on http://localhost:8080`.
+
+### Step 5. Verify in the browser
+
+1. Open **http://localhost:8080** in your browser.
+2. You should be redirected to the first channel’s messages (or see the channel list if none exist).
+3. Confirm that synced messages appear. If a message has a `.npvt` attachment (≤500 KB), you should see a “Download &lt;filename&gt;” link that serves the file.
+
+To test `.npvt` support: send a message with a `.npvt` file (≤500 KB) to one of your synced channels, run **Sync** again in the desktop app, then refresh the web app and use the download link.
+
+---
+
 ## Prerequisites
 
 - **Python 3.10+** (for the desktop sync app)
@@ -28,10 +147,13 @@ GRANT ALL PRIVILEGES ON telegram_reader.* TO 'tgbg'@'%';
 FLUSH PRIVILEGES;
 ```
 
-2. Apply the schema from `schema.sql` (if present in the repo) or your own equivalent schema defining at least:
+2. Apply the schema from `db-schema.sql` (in the repo root) or your own equivalent schema defining at least:
    - `channels` table
    - `messages` table
+   - `message_files` table (for .npvt attachments)
    - `sync_logs` table
+
+   If you already have a database from an earlier setup, run the new `CREATE TABLE IF NOT EXISTS message_files ...` from `db-schema.sql` to add attachment support.
 
 ---
 

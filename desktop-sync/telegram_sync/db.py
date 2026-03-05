@@ -121,6 +121,30 @@ def update_sync_log(
     conn.commit()
 
 
+def upsert_message_file(
+    conn: MySQLConnection,
+    channel_id: int,
+    message_id: int,
+    filename: str,
+    content: bytes,
+) -> None:
+    """
+    Insert or update a message attachment (.npvt file). Overwrites existing row for same (channel_id, message_id).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO message_files (channel_id, message_id, filename, content)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+              filename = VALUES(filename),
+              content = VALUES(content)
+            """,
+            (channel_id, message_id, filename, content),
+        )
+    conn.commit()
+
+
 def get_last_message_published_for_telegram(
     conn: MySQLConnection,
     telegram_id: int,

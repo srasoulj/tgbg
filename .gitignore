@@ -29,6 +29,7 @@ build/
 
 # Desktop sync app: local-only secrets/state
 desktop-sync/.env
+web-app-go/.env
 desktop-sync/.venv/
 desktop-sync/channels.json
 desktop-sync/last_sync.json

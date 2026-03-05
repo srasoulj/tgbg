@@ -54,12 +54,12 @@
                             <span class="message-id">#{{ .MessageID }}</span>
                         </div>
                         <div class="message-text" dir="rtl" lang="fa">
-                            {{ if .Text.Valid }}{{ .Text.String }}{{ end }}
+                            {{ if .Text.Valid }}{{ .Text.String }}{{ else }}{{ if .MediaURL.Valid }}<span class="message-text-placeholder">(file attachment)</span>{{ end }}{{ end }}
                         </div>
                         {{ if .MediaURL.Valid }}
                             <div style="margin-top: 0.35rem;">
-                                <a href="{{ .MediaURL.String }}" target="_blank" rel="noopener noreferrer">
-                                    View media
+                                <a href="{{ .MediaURL.String }}" target="_blank" rel="noopener noreferrer" download>
+                                    {{ if .AttachmentFileName.Valid }}Download {{ .AttachmentFileName.String }}{{ else }}Download file{{ end }}
                                 </a>
                             </div>
                         {{ end }}
