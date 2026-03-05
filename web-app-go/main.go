@@ -3,10 +3,12 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"html"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -206,9 +208,39 @@ func formatIRTime(t time.Time) string {
 	return pt.Format("yyyy-MM-dd HH:mm")
 }
 
+// urlRegex matches http(s), t.me, and custom schemes (nm-dns, slipnet, slipnet-enc, trojan, vless, vmess, ss, tg).
+var urlRegex = regexp.MustCompile(`(https?|nm-dns|slipnet-enc|slipnet|trojan|vless|vmess|ss|tg)://[^\s<>"']+`)
+
+// linkify escapes s for HTML and wraps URLs in clickable <a> tags. Returns safe template.HTML.
+func linkify(s string) template.HTML {
+	if s == "" {
+		return ""
+	}
+	idx := urlRegex.FindAllStringIndex(s, -1)
+	if len(idx) == 0 {
+		return template.HTML(html.EscapeString(s))
+	}
+	var out []byte
+	last := 0
+	for _, pair := range idx {
+		out = append(out, html.EscapeString(s[last:pair[0]])...)
+		url := s[pair[0]:pair[1]]
+		escURL := html.EscapeString(url)
+		out = append(out, `<a href="`...)
+		out = append(out, escURL...)
+		out = append(out, `" target="_blank" rel="noopener noreferrer">`...)
+		out = append(out, escURL...)
+		out = append(out, `</a>`...)
+		last = pair[1]
+	}
+	out = append(out, html.EscapeString(s[last:])...)
+	return template.HTML(out)
+}
+
 func buildTemplates() (*template.Template, *template.Template, *template.Template) {
 	funcMap := template.FuncMap{
 		"formatIRTime": formatIRTime,
+		"linkify":     linkify,
 	}
 
 	layout := template.Must(template.New("layout").Funcs(funcMap).ParseFiles(
