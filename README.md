@@ -104,6 +104,70 @@ Once authorized:
 - Choose which channels are enabled in the GUI.
 - Click **Sync** to run a sync. Progress and summary (channels processed, messages inserted/skipped) are shown in the log area.
 
+### 2.4. Hourly automation on macOS (no UI, uses existing session)
+
+If you want your Mac to run a sync automatically every hour **without opening the GUI**, you can use:
+
+- A headless entrypoint: `python -m telegram_sync.cli_sync`
+- A connectivity gate that checks **exactly** `https://www.google.com` before syncing
+- A `launchd` job to run it hourly
+
+Important behavior:
+- This uses the existing Telethon session file under `desktop-sync/sessions/` (no re-login).
+- If the session is not authorized yet, the headless sync will **fail** instead of prompting. Run the GUI once to authorize, then automation will reuse the session.
+- The automation updates `desktop-sync/last_sync.json`, so when you open the GUI later it shows the latest automated sync time/status.
+
+#### 2.4.1. Test the headless sync once
+
+From inside `desktop-sync` with the virtualenv activated:
+
+```bash
+python -m telegram_sync.cli_sync
+```
+
+#### 2.4.2. Install the hourly `launchd` job
+
+1. Make the wrapper script executable:
+
+```bash
+cd desktop-sync
+chmod +x run_sync_if_online.sh
+```
+
+2. Create the log directory:
+
+```bash
+mkdir -p ~/Library/Logs/tgbg-sync
+```
+
+3. Copy the plist to LaunchAgents and edit paths:
+
+- Copy:
+
+```bash
+cp launchd/com.tgbg.desktop-sync.hourly.plist ~/Library/LaunchAgents/
+```
+
+- Open `~/Library/LaunchAgents/com.tgbg.desktop-sync.hourly.plist` and replace:
+  - `/ABSOLUTE/PATH/TO/tgbg/desktop-sync` with your real repo path
+  - `/ABSOLUTE/PATH/TO/Library/Logs/...` with your real home path (e.g. `/Users/<you>/Library/Logs/...`)
+
+4. Load and start it:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.tgbg.desktop-sync.hourly.plist
+launchctl start com.tgbg.desktop-sync.hourly
+```
+
+5. Check logs:
+
+```bash
+tail -n 200 ~/Library/Logs/tgbg-sync/stdout.log
+tail -n 200 ~/Library/Logs/tgbg-sync/stderr.log
+```
+
+The wrapper script only runs the sync if a request to `https://www.google.com` succeeds; otherwise it exits quietly.
+
 ---
 
 ## 3. Web app (Go)

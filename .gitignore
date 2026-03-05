@@ -1,0 +1,49 @@
+.DS_Store
+**/.DS_Store
+
+# Editors / IDEs
+.idea/
+.vscode/
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# Desktop sync app: local-only secrets/state
+desktop-sync/.env
+desktop-sync/.venv/
+desktop-sync/channels.json
+desktop-sync/last_sync.json
+desktop-sync/sessions/
+desktop-sync/launchd-logs/
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+
+# Built web binary (local build artifact)
+web-app-go/tgbg-web
+
