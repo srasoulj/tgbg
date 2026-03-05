@@ -270,6 +270,41 @@ Sometimes your Linux server cannot reach GitHub (firewall, no outbound internet,
 
    Once this works, you can turn it into a systemd service as shown in section **5.3** so it runs in the background.
 
+### 6.1.1. Building a Linux executable locally (PowerShell and zsh)
+
+Instead of running `go run` on the server, you can build a **Linux amd64 executable on your laptop** and copy only the binary plus the `templates/` and `static/` folders.
+
+- **On Windows (PowerShell)**
+
+  ```powershell
+  cd E:\Vibe\tgbg\web-app-go
+  $env:GOOS = "linux"
+  $env:GOARCH = "amd64"
+  go build -o tgbg-web
+  ```
+
+- **On macOS / Linux (zsh or bash)**
+
+  ```bash
+  cd /Users/sajjad/Documents/Cursor/tgbg/web-app-go
+  GOOS=linux GOARCH=amd64 go build -o tgbg-web
+  ```
+
+This will create a `tgbg-web` Linux binary next to your source. Then you can copy it (plus `templates/` and `static/`) to the server, for example:
+
+```bash
+scp -r web-app-go/templates web-app-go/static web-app-go/tgbg-web root@api.amoozal.com:/var/www/tgbg/web-app-go
+```
+
+On the server:
+
+```bash
+ssh root@api.amoozal.com
+cd /var/www/tgbg/web-app-go
+chmod +x tgbg-web
+./tgbg-web
+```
+
 ### 6.2. Option B – use the server as a bare Git remote (no GitHub needed)
 
 This option gives you a nicer workflow: you `git push` from your laptop directly to the server, even if the server cannot reach GitHub.
