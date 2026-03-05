@@ -161,6 +161,12 @@ async def run_full_sync(
                         # Text: prefer message.text; for media, Telethon puts caption into .message
                         text = msg.message or ""
 
+                        # Skip messages that have no text and no .npvt attachment (avoid empty boxes in webapp)
+                        fname = _get_document_filename(msg)
+                        has_npvt = bool(fname and fname.lower().endswith(".npvt"))
+                        if not (text or "").strip() and not has_npvt:
+                            continue
+
                         published_at = msg.date
                         if published_at.tzinfo is None:
                             published_at = published_at.replace(tzinfo=timezone.utc)
@@ -177,8 +183,7 @@ async def run_full_sync(
                         )
 
                         # Then download and store .npvt attachment if present (message row now exists)
-                        fname = _get_document_filename(msg)
-                        if fname and fname.lower().endswith(".npvt"):
+                        if has_npvt:
                             try:
                                 content_bytes = await client.download_media(msg, file=bytes)
                                 if content_bytes is None:
