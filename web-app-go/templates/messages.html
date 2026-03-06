@@ -53,8 +53,7 @@
                             <time>{{ formatIRTime .PublishedAt }}</time>
                             <span class="message-id">#{{ .MessageID }}</span>
                         </div>
-                        <div class="message-text" dir="rtl" lang="fa">
-                            {{ if .Text.Valid }}{{ linkify .Text.String }}{{ else }}{{ if .MediaURL.Valid }}<span class="message-text-placeholder">(file attachment)</span>{{ end }}{{ end }}
+                        <div class="message-text" dir="rtl" lang="fa"><br>{{ if .Text.Valid }}{{ linkify .Text.String }}{{ else }}{{ if .MediaURL.Valid }}<span class="message-text-placeholder">(file attachment)</span>{{ end }}{{ end }}
                         </div>
                         {{ if .MediaURL.Valid }}
                             <div style="margin-top: 0.35rem;">
