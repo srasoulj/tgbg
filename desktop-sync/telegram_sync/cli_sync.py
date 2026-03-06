@@ -44,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         _write_last_sync("success")
     except Exception as exc:  # noqa: BLE001
         _write_last_sync("error")
-        print(f"sync failed: {exc}", file=sys.stderr)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"{ts} sync failed: {exc}", file=sys.stderr)
         return 1
 
     if args.json:
