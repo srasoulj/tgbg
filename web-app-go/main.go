@@ -33,6 +33,7 @@ type Message struct {
 
 type ChannelsPageData struct {
 	Channels []Channel
+	LastSync *time.Time
 }
 
 type MessagesPageData struct {
@@ -45,6 +46,7 @@ type MessagesPageData struct {
 	HasNext        bool
 	PrevPage       int
 	NextPage       int
+	LastSync       *time.Time
 }
 
 func main() {
@@ -84,6 +86,7 @@ func main() {
 
 		data := ChannelsPageData{
 			Channels: channels,
+			LastSync: getLastSyncTime(db),
 		}
 		if err := tmplChannels.ExecuteTemplate(w, "layout", data); err != nil {
 			log.Printf("render channels: %v", err)
@@ -155,6 +158,7 @@ func main() {
 			HasNext:        page < totalPages,
 			PrevPage:       page - 1,
 			NextPage:       page + 1,
+			LastSync:       getLastSyncTime(db),
 		}
 		if err := tmplMessages.ExecuteTemplate(w, "layout", data); err != nil {
 			log.Printf("render messages: %v", err)
@@ -198,12 +202,24 @@ func mustLoadTehranLocation() *time.Location {
 	return loc
 }
 
-func formatIRTime(t time.Time) string {
-	if t.IsZero() {
+func formatIRTime(t interface{}) string {
+	var tm time.Time
+	switch v := t.(type) {
+	case time.Time:
+		tm = v
+	case *time.Time:
+		if v == nil {
+			return ""
+		}
+		tm = *v
+	default:
+		return ""
+	}
+	if tm.IsZero() {
 		return ""
 	}
 	// Convert to Tehran time, then to Persian (Hijri Shamsi) calendar.
-	pt := ptime.New(t.In(tehranLoc))
+	pt := ptime.New(tm.In(tehranLoc))
 	// Example output: 1403-01-15 13:45 (Shamsi date, 24h time)
 	return pt.Format("yyyy-MM-dd HH:mm")
 }
@@ -317,6 +333,17 @@ func loadMessages(db *sql.DB, channelID int64, limit, offset int) ([]Message, er
 		result = append(result, m)
 	}
 	return result, rows.Err()
+}
+
+func getLastSyncTime(db *sql.DB) *time.Time {
+	var t time.Time
+	err := db.QueryRow(
+		`SELECT finished_at FROM sync_logs WHERE status = 'success' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1`,
+	).Scan(&t)
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 func handleNPVTDownload(db *sql.DB, w http.ResponseWriter, r *http.Request) {

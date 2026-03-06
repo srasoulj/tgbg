@@ -20,6 +20,7 @@
             --text-muted: #9ca3af;
             --radius-lg: 18px;
             --radius-md: 12px;
+            --radius-sm: 8px;
             --radius-pill: 999px;
             --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.8);
             --transition-fast: 180ms ease-out;
@@ -141,6 +142,7 @@
             border-radius: 999px;
             background: #22c55e;
             box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.18);
+            margin-right: 0.25rem;
         }
 
         main {
@@ -379,11 +381,41 @@
             position: sticky;
             top: 0;
             z-index: 20;
-            padding: 0.4rem 0.65rem 0.6rem 0.65rem;
-            margin: -0.6rem -0.75rem 0.75rem -0.75rem;
+            padding: 0.85rem 1.4rem 0.8rem 1.4rem;
+            margin: -1.2rem -1.5rem 0.8rem -1.5rem;
             background: linear-gradient(to bottom, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92));
             border-bottom: 1px solid rgba(148, 163, 184, 0.35);
             backdrop-filter: blur(18px);
+        }
+
+        .back-to-top {
+            display: none;
+            position: fixed;
+            bottom: 1.2rem;
+            left: 1.2rem;
+            z-index: 50;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1px solid rgba(148, 163, 184, 0.6);
+            background: rgba(15, 23, 42, 0.95);
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+        }
+
+        .back-to-top:hover {
+            background: var(--accent-soft);
+            border-color: var(--accent-strong);
+            transform: translateY(-2px);
+        }
+
+        .back-to-top.visible {
+            display: flex;
         }
 
         .mobile-channel-selector-label {
@@ -428,13 +460,18 @@
             .app-frame {
                 height: auto;
                 border-radius: 18px;
+                overflow: visible;
             }
             main {
                 grid-template-columns: minmax(0, 1fr);
+                overflow: visible;
             }
             nav {
                 border-right: none;
                 border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+            }
+            section.content {
+                overflow-y: visible;
             }
             .mobile-channel-selector {
                 display: block;
@@ -505,7 +542,7 @@
             </div>
             <div class="header-badge">
                 <span class="header-dot"></span>
-                Synced via desktop app
+                {{ if .LastSync }}Synced {{ formatIRTime .LastSync }}{{ else }}Not synced yet{{ end }}
             </div>
         </header>
         <main>
@@ -522,6 +559,7 @@
         </main>
     </div>
 </div>
+<button class="back-to-top" id="back-to-top" aria-label="Back to top">↑</button>
 <script>
     (function () {
         // Mobile channel dropdown
@@ -535,19 +573,7 @@
             });
         }
 
-        // Infinite scroll for messages (works when window scrolls on mobile or when section.content scrolls on desktop)
-        var messagesContainer = document.getElementById("messages-container");
-        var paginationMeta = document.getElementById("pagination-meta");
-        if (!messagesContainer || !paginationMeta) {
-            return;
-        }
-
-        var loading = false;
         var scrollContainer = document.querySelector("section.content");
-
-        function getNextUrl() {
-            return paginationMeta.dataset.nextUrl || "";
-        }
 
         function getScrollInfo() {
             if (scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
@@ -564,54 +590,88 @@
             };
         }
 
-        function onScroll() {
-            if (loading) return;
-            var nextUrl = getNextUrl();
-            if (!nextUrl) return;
+        // Infinite scroll for messages (works when window scrolls on mobile or when section.content scrolls on desktop)
+        var messagesContainer = document.getElementById("messages-container");
+        var paginationMeta = document.getElementById("pagination-meta");
+        if (messagesContainer && paginationMeta) {
+            var loading = false;
 
-            var info = getScrollInfo();
-            var scrollPosition = info.scrollTop + info.clientHeight;
-            var threshold = info.scrollHeight - 200;
-            if (scrollPosition < threshold) return;
+            function getNextUrl() {
+                return paginationMeta.dataset.nextUrl || "";
+            }
 
-            loading = true;
+            function onScroll() {
+                if (loading) return;
+                var nextUrl = getNextUrl();
+                if (!nextUrl) return;
 
-            fetch(nextUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } })
-                .then(function (response) { return response.text(); })
-                .then(function (html) {
-                    var temp = document.createElement("div");
-                    temp.innerHTML = html;
+                var info = getScrollInfo();
+                var scrollPosition = info.scrollTop + info.clientHeight;
+                var threshold = info.scrollHeight - 200;
+                if (scrollPosition < threshold) return;
 
-                    var newMessagesRoot = temp.querySelector("#messages-container");
-                    var newMeta = temp.querySelector("#pagination-meta");
+                loading = true;
 
-                    if (newMessagesRoot) {
-                        var newMessages = newMessagesRoot.querySelectorAll(".message");
-                        newMessages.forEach(function (msg) {
-                            messagesContainer.appendChild(msg);
-                        });
-                    }
+                fetch(nextUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+                    .then(function (response) { return response.text(); })
+                    .then(function (html) {
+                        var temp = document.createElement("div");
+                        temp.innerHTML = html;
 
-                    if (newMeta) {
-                        paginationMeta.dataset.nextUrl = newMeta.dataset.nextUrl || "";
-                        paginationMeta.querySelector("span").textContent = newMeta.querySelector("span").textContent;
-                    } else {
+                        var newMessagesRoot = temp.querySelector("#messages-container");
+                        var newMeta = temp.querySelector("#pagination-meta");
+
+                        if (newMessagesRoot) {
+                            var newMessages = newMessagesRoot.querySelectorAll(".message");
+                            newMessages.forEach(function (msg) {
+                                messagesContainer.appendChild(msg);
+                            });
+                        }
+
+                        if (newMeta) {
+                            paginationMeta.dataset.nextUrl = newMeta.dataset.nextUrl || "";
+                            paginationMeta.querySelector("span").textContent = newMeta.querySelector("span").textContent;
+                        } else {
+                            paginationMeta.dataset.nextUrl = "";
+                        }
+                    })
+                    .catch(function () {
                         paginationMeta.dataset.nextUrl = "";
-                    }
-                })
-                .catch(function () {
-                    // Fail silently; user can still use manual pagination on desktop.
-                    paginationMeta.dataset.nextUrl = "";
-                })
-                .finally(function () {
-                    loading = false;
-                });
+                    })
+                    .finally(function () {
+                        loading = false;
+                    });
+            }
+
+            if (scrollContainer) {
+                scrollContainer.addEventListener("scroll", onScroll, { passive: true });
+            }
+            window.addEventListener("scroll", onScroll, { passive: true });
         }
 
-        if (scrollContainer) {
-            scrollContainer.addEventListener("scroll", onScroll, { passive: true });
+        // Back-to-top button
+        var backToTopBtn = document.getElementById("back-to-top");
+        if (backToTopBtn) {
+            function updateBackToTopVisibility() {
+                var info = getScrollInfo();
+                if (info.scrollTop > 300) {
+                    backToTopBtn.classList.add("visible");
+                } else {
+                    backToTopBtn.classList.remove("visible");
+                }
+            }
+            if (scrollContainer) {
+                scrollContainer.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
+            }
+            window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
+            backToTopBtn.addEventListener("click", function () {
+                if (scrollContainer && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+                    scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+                } else {
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                }
+            });
         }
-        window.addEventListener("scroll", onScroll, { passive: true });
     })();
 </script>
 </body>
